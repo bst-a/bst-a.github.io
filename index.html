@@ -1,0 +1,418 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>HB Cake</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+  <style>
+    body {
+      background:#86e7ff;
+      margin:0;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      font-family:system-ui,Segoe UI,Roboto;
+      overflow-x:hidden;
+    }
+
+    #ui { margin:12px 0; text-align:center; }
+
+    input[type=number] {
+      width:72px;
+      padding:6px;
+      font-size:16px;
+      border-radius:6px;
+    }
+
+    input[type=number]::placeholder {
+      color: rgba(0,0,0,0.5);
+    }
+
+    button {
+      padding:8px 12px;
+      font-size:16px;
+      margin-left:8px;
+      cursor:pointer;
+      border-radius: 8px;
+    }
+
+    #finalMessage {
+      background-color: #fff;
+      padding: 24px;
+      border-radius: 12px;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.5);
+      text-align: center;
+      z-index: 999;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+      font-size: 1.8em;
+      opacity: 0;
+      transition: all 0.4s ease-out;
+      max-width: 90%;
+    }
+
+    #finalMessage img {
+      max-width: 390px;
+      margin-top: 3px;
+      border-radius: 8px;
+    }
+
+    #ageInput { width: 100px; font-size: 28px; padding: 10px; }
+    #ageConfirm, #blowBtn { font-size: 22px; padding: 12px 24px; }
+
+    @media (max-width: 1000px) {
+      #ageInput { width: 200px; font-size: 42px; padding: 25px; }
+      #ageConfirm, #blowBtn { font-size: 50px; padding: 20px 40px; }
+      #ui { margin-top: 90px; }
+      canvas { margin-top: 90px; }
+
+      #finalMessage { font-size: 5em; padding: 100px; width: 95%; max-width: 700px; transform: translate(-50%, -50%) scale(0.7);}
+      #finalMessage img { width: 100%; max-width: 100%; height: auto; display: block; margin: 30px auto 0 auto;}
+      #finalMessage button { width: 48px; height: 48px; font-size: 28px; top: 20px; right: 20px; }
+    }
+
+    @keyframes floatUp {
+      0% { transform: translateY(100vh) rotate(0deg); }
+      50% { transform: translateY(50vh) rotate(10deg); }
+      100% { transform: translateY(-150vh) rotate(-10deg); }
+    }
+
+    .balloon {
+      position: fixed;
+      bottom: -100px;
+      animation: floatUp linear forwards;
+      z-index: 200;
+      pointer-events: none;
+      animation-timing-function: ease-in-out;
+    }
+  </style>
+</head>
+<body>
+   <div id="welcomeText" style="font-size:1.6em; text-align:center; margin-top:25px; margin-bottom:10px; padding:10px 20px; max-width:700px;">
+    This little birthday surprise was created for you by Sajjad 🎉  
+    Enter your age above and tap the green checkmark to begin!
+  </div>
+  <div id="ui">
+    <span id="ageSection">
+      <input id="ageInput" type="number" min="1" step="1" placeholder="AGE" />
+      <button id="ageConfirm">✅</button>
+    </span>
+    <span id="blowSection" style="display:none;">
+      <button id="blowBtn">Blow 🌬️</button>
+    </span>
+  </div>
+
+<script>
+let candles = [];
+let smokeParticles = [];
+let userAge = 0;
+let blowCount = 0;
+let soundHappy;
+
+// Audio
+const clickSound = new Audio('click.mp3');
+clickSound.volume = 0.6;
+
+const desktopSettings = {
+  cakeWidthFactor: 0.50,
+  cakeHeightFactor: 0.15,
+  thinLayerHeightFactor: 0.02,
+  plateHeightFactor: 0.05,
+  cakeCenterYOffset: 0.85,
+  candleWidth: 9,
+  candleHeight: 85,
+  candleYOffset: 0.05
+};
+
+const mobileSettings = {
+  cakeWidthFactor: 0.81,
+  cakeHeightFactor: 0.14,
+  thinLayerHeightFactor: 0.03,
+  plateHeightFactor: 0.09,
+  cakeCenterYOffset: 0.80,
+  candleWidth: 13,
+  candleHeight: 180,
+  candleYOffset: 0.07,
+  flameSize: 40,
+  smokeYOffset: -90
+};
+
+let settings;
+let animationProgress = 0;
+let animationSpeed = 0.011;
+let layerDelays = [0.0, 0.15, 0.35, 0.45, 0.6];
+
+let bgColor = '#f6f6f6';
+let plateColor = '#e2e0e0';
+let layerColor = '#5d3a1a';
+let thinLayerColor = '#B6771D';
+let glazeColor = '#ff69b4';
+let candleColor = '#2196f3';
+
+function setup() {
+  setupCanvas();
+  rectMode(CENTER);
+  noStroke();
+
+  try {
+    soundFormats('wav');
+    soundHappy = loadSound('buoncompleanno.wav', ()=>console.log('Audio caricato'));
+  } catch(e) { console.warn('Audio non caricato:', e); }
+
+  select('#ageInput').input(()=> {
+    userAge = int(select('#ageInput').value());
+    generateCandles(userAge);
+    blowCount = 0;
+  });
+
+  select('#blowBtn').mousePressed(soffia);
+}
+
+function setupCanvas(){
+  if(window.innerWidth < 1000){
+    // mobile: canvas più piccolo o proporzioni diverse
+    createCanvas(window.innerWidth * 0.95, window.innerHeight * 0.78);
+  } else {
+    // desktop rimane invariato
+    createCanvas(window.innerWidth * 0.75, window.innerHeight * 0.85);
+  }
+  settings = window.innerWidth < 1000 ? mobileSettings : desktopSettings;
+}
+
+function draw() {
+  background(bgColor);
+  animationProgress = min(1, animationProgress + animationSpeed);
+
+  let centerX = width/2;
+  let centerY = height * settings.cakeCenterYOffset;
+  const rectWidth = width * settings.cakeWidthFactor;
+  const rectHeight = height * settings.cakeHeightFactor;
+  const thinHeight = height * settings.thinLayerHeightFactor;
+  const plateHeight = height * settings.plateHeightFactor;
+
+  function eased(t){ return t*t*(3-2*t); }
+
+  // PIATTO
+  let pT = constrain((animationProgress - layerDelays[0])*3, 0, 1);
+  let plateY = lerp(centerY + rectHeight/2 + plateHeight/2 - 100, centerY + rectHeight/2 + plateHeight/2, eased(pT));
+  fill(plateColor);
+  if(pT>0) rect(centerX, plateY, rectWidth*1.3, plateHeight);
+
+  // STRATI
+  let yPos = centerY;
+  for(let i=0;i<3;i++){
+    let delay = layerDelays[i+1];
+    let t = constrain((animationProgress - delay)*3, 0, 1);
+    let yAnimated = lerp(yPos - 150, yPos, eased(t));
+    fill(layerColor);
+    if(t>0) rect(centerX, yAnimated, rectWidth, rectHeight, 20);
+
+    if(i < 2){
+      yPos -= rectHeight/2 + thinHeight/2;
+      let t2 = constrain((animationProgress - (delay+0.05))*3, 0, 1);
+      let yThin = lerp(yPos - 120, yPos, eased(t2));
+      fill(thinLayerColor);
+      if(t2>0) rect(centerX, yThin, rectWidth, thinHeight, 10);
+      yPos -= thinHeight/2 + rectHeight/2;
+    } else { yPos -= rectHeight; }
+  }
+
+  // GLASSA
+  let gT = constrain((animationProgress - layerDelays[4])*3, 0, 1);
+  let gY = lerp(yPos + rectHeight/2 - 120, yPos + rectHeight/2, eased(gT));
+  if(gT>0) drawGlaze(centerX, gY, rectWidth, thinHeight*3, 6);
+
+  // CANDELINE
+  for(let i=0;i<candles.length;i++){ drawCandle(candles[i]); }
+
+  // FUMO
+  for(let i=smokeParticles.length-1;i>=0;i--){
+    smokeParticles[i].update();
+    smokeParticles[i].show();
+    if(smokeParticles[i].alpha <= 0) smokeParticles.splice(i,1);
+  }
+}
+
+function drawCandle(candle){
+  let candleWidth = settings.candleWidth;
+  let candleHeight = settings.candleHeight;
+  candle.y += (candle.yFinal - candle.y) * 0.1;
+  fill(candleColor);
+  rect(candle.x, candle.y - candleHeight/2, candleWidth, candleHeight, 3);
+
+  if(candle.on){
+    const flameSize = settings.flameSize || 18;
+    fill(255, 200, 0, 255);
+    ellipse(candle.x, candle.y - candleHeight - 8, flameSize * 0.6, flameSize);
+  }
+}
+
+const ageInput = document.getElementById("ageInput");
+const ageConfirm = document.getElementById("ageConfirm");
+const ageSection = document.getElementById("ageSection");
+const blowSection = document.getElementById("blowSection");
+const blowBtn = document.getElementById("blowBtn");
+
+// Event listeners con clickSound
+ageConfirm.addEventListener("click", () => {
+  clickSound.currentTime = 0;
+  clickSound.play().catch(()=>console.log('Play bloccato'));
+  if(userAge>0){
+    ageSection.style.display = "none";
+    blowSection.style.display = "inline-block";
+  }
+});
+
+blowBtn.addEventListener("click", () => {
+  clickSound.currentTime = 0;
+  clickSound.play().catch(()=>console.log('Play bloccato'));
+  soffia();
+});
+
+ageInput.addEventListener("input", () => {
+  userAge = parseInt(ageInput.value()) || 0;
+  generateCandles(userAge);
+  blowCount = 0;
+});
+
+function drawGlaze(centerX, y, widthRect, heightRect, waves){
+  fill(glazeColor);
+  beginShape();
+  let radius = 15;
+  let step = widthRect / waves;
+  let amplitude = 15;
+  vertex(centerX - widthRect/2 + radius, y);
+  quadraticVertex(centerX - widthRect/2, y, centerX - widthRect/2, y + radius);
+  vertex(centerX - widthRect/2, y + heightRect);
+  for(let i=0;i<waves;i++){
+    let x1 = centerX - widthRect/2 + (i+0.5)*step;
+    let x2 = centerX - widthRect/2 + (i+1)*step;
+    let y1 = y + heightRect + sin((i+0.5)/TWO_PI*waves*4)*amplitude;
+    let y2 = y + heightRect + sin((i+1)/TWO_PI*waves*4)*amplitude;
+    quadraticVertex(x1, y1, x2, y2);
+  }
+  vertex(centerX + widthRect/2, y + heightRect);
+  quadraticVertex(centerX + widthRect/2, y, centerX + widthRect/2 - radius, y);
+  endShape(CLOSE);
+}
+
+function generateCandles(n){
+  candles = [];
+  for(let i = 0; i < n; i++){
+    let x = width/2 - (width * settings.cakeWidthFactor)/2 + (i + 0.5)*(width * settings.cakeWidthFactor/n);
+    let yFinal = height * settings.cakeCenterYOffset - (height * settings.cakeHeightFactor*3) + height * (settings.candleYOffset || 0);
+    let yStart = yFinal - random(150, 300);
+    candles.push({on:true, x:x, y:yStart, yFinal:yFinal});
+  }
+}
+
+function soffia(){
+  if(userAge<=0 || blowCount>=userAge) return;
+  blowCount++;
+
+  let stillOn = [];
+  for(let i=0;i<candles.length;i++) if(candles[i].on) stillOn.push(i);
+  if(stillOn.length===0) return;
+
+  let remaining = max(1,userAge-blowCount);
+  let toTurnOff = ceil(stillOn.length/(remaining+1));
+  toTurnOff = max(1,min(toTurnOff,stillOn.length));
+
+  for(let k=0;k<toTurnOff;k++){
+    let idx = random(stillOn);
+    candles[idx].on=false;
+    stillOn = stillOn.filter(v=>v!==idx);
+    let candleY = candles[idx].y - 70+ (settings.smokeYOffset || 0);
+    smokeParticles.push(new Smoke(candles[idx].x, candleY));
+
+    // click audio candela spenta
+    clickSound.currentTime = 0;
+    clickSound.play().catch(()=>console.log('Play bloccato'));
+  }
+
+  if(countOff()===candles.length){
+    const end = Date.now() + 1000;
+    (function frame() {
+      confetti({particleCount:16, angle:40, spread:120, origin:{x:0}});
+      confetti({particleCount:16, angle:160, spread:120, origin:{x:1}});
+      if(Date.now()<end) requestAnimationFrame(frame);
+    })();
+
+    if(soundHappy && soundHappy.isLoaded()) soundHappy.play();
+    spawnBalloons();
+    showFinalMessage();
+  }
+}
+
+function countOff(){ return candles.filter(c=>!c.on).length; }
+
+class Smoke{
+  constructor(x,y){
+    this.x = x;
+    this.y = y - 5;
+    this.alpha = 150;
+    const smokeScale = window.innerWidth < 1000 ? 2 : 1;
+    this.size = random(30,35) * smokeScale;
+    this.velY = random(-0.1,-2);
+    this.velX = random(-0.3,0.3);
+  }
+  update(){ this.y += this.velY; this.x += this.velX; this.alpha -= 2; }
+  show(){ noStroke(); fill(200,200,200,this.alpha); ellipse(this.x,this.y,this.size); }
+}
+
+function spawnBalloons(){
+  const balloonImgs = ['ballon1.png','ballon2.png','ballon3.png'];
+  for(let i=0;i<20;i++){
+    const balloon = document.createElement("img");
+    balloon.src = balloonImgs[Math.floor(Math.random()*balloonImgs.length)];
+    balloon.classList.add("balloon");
+    balloon.style.left = Math.random()*100 + "vw";
+    balloon.style.width = 150 + Math.random()*50 + "px";
+    balloon.style.animationDuration = (5 + Math.random()*3) + "s";
+    document.body.appendChild(balloon);
+    setTimeout(()=>balloon.remove(), 9000);
+  }
+}
+
+function showFinalMessage(){
+  const msg = document.createElement('div');
+  msg.id = 'finalMessage';
+  const images = ['dog.jpg','hamster.jpg','monkey.jpg'];
+  const chosen = images[Math.floor(Math.random() * images.length)];
+
+  msg.innerHTML = `
+    <div style="position: relative;">
+      <button id="closeMsg">×</button>
+      <div style="margin-top: 60px;">Today is your special day, happy birthday!! 🥳</div>
+      <img src="${chosen}" alt="Animal">
+    </div>`;
+
+  const img = msg.querySelector('img');
+  img.style.visibility = 'hidden';
+
+  document.body.appendChild(msg);
+
+  img.onload = () => {
+    img.style.visibility = 'visible';
+
+    const happyAudio = new Audio('buoncompleanno.mp3');
+    happyAudio.volume = 0.7;
+    happyAudio.play().catch(()=>console.log('Play bloccato, user interaction richiesta'));
+
+    requestAnimationFrame(() => {
+      msg.style.transform = "translate(-50%, -50%) scale(1)";
+      msg.style.opacity = 1;
+    });
+  };
+
+  document.getElementById('closeMsg').onclick = () => msg.remove();
+}
+
+function windowResized(){ setupCanvas(); }
+
+</script>
+</body>
+</html>
